@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validation } from "../../middleware/validation.js";
-import { fileUpload, fileValidation } from "../../utils/multer.js";
+import { fileUpload, fileValidation } from "../../utils/CloudinaryMulter.js";
 import * as subcategoryController from "./controller/subcategory.js";
 import * as validators from "./subcategory.validation.js";
 import { auth } from "../../middleware/auth.js";

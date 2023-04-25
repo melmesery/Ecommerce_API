@@ -26,6 +26,7 @@ const initApp = (app, express) => {
   //   next();
   // });
 
+  app.get("/", (req, res) => res.send("Hello World!"));
   app.use(`/auth`, authRouter);
   app.use(`/user`, userRouter);
   app.use(`/product`, productRouter);

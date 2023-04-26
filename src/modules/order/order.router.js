@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { auth } from "../../middleware/auth.js";
 import { validation } from "../../middleware/validation.js";
 import * as orderController from "./controller/order.js";
@@ -26,6 +26,12 @@ router.patch(
   auth(endPoint.status),
   validation(validators.orderStatus),
   orderController.orderStatus
+);
+
+router.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  orderController.webhook
 );
 
 export default router;

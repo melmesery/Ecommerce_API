@@ -12,7 +12,13 @@ import userRouter from "./modules/user/user.router.js";
 import { globalErrHandling } from "./utils/ErrorHandling.js";
 
 const initApp = (app, express) => {
-  app.use(express.json({}));
+  app.use((req, res, next) => {
+    if (req.originalUrl == "/order/webhook") {
+      next();
+    } else {
+      express.json({})(req, res, next);
+    }
+  });
 
   // var whitelist = [];
   // app.use(async (req, res, next) => {

@@ -3,9 +3,11 @@ import couponModel from "../../../../DB/model/Coupon.model.js";
 import orderModel from "../../../../DB/model/Order.model.js";
 import productModel from "../../../../DB/model/Product.model.js";
 import { asyncHandler } from "../../../utils/ErrorHandling.js";
-import { deleteCartItems } from "../../cart/controller/cart.js";
 import { createInvoice } from "../../../utils/PDF.js";
+import payment from "../../../utils/Payment.js";
 import sendEmail from "../../../utils/SendEmail.js";
+import { deleteCartItems } from "../../cart/controller/cart.js";
+
 
 export const createOrder = asyncHandler(async (req, res, next) => {
   const { products, where, phone, note, couponName, paymentType } = req.body;
@@ -94,12 +96,6 @@ export const createOrder = asyncHandler(async (req, res, next) => {
     await deleteCartItems(productIds, req.user._id);
   }
 
-  // order.where.map((AY) => {
-  //   return AY;
-  // });
-
-  // const WHERE = AY;
-
   const invoice = {
     shipping: {
       name: req.user.userName,
@@ -127,6 +123,43 @@ export const createOrder = asyncHandler(async (req, res, next) => {
     },
   });
 
+  if (order.paymentType == "card") {
+    const stripe = new Stripe(process.env.STRIPE_KEY);
+    if (req.body.coupon) {
+      const coupon = await stripe.coupons.create({
+        percent_off: req.body.coupon.amount,
+        duration: "once",
+      });
+      req.body.couponId = coupon.id;
+    }
+    const session = await payment({
+      stripe,
+      payment_method_types: ["card"],
+      mode: "payment",
+      customer_email: req.user.email,
+      metadata: {
+        orderId: order._id.toString(),
+      },
+      cancel_url: `${process.env.CANCEL_URL}/${order._id}/cancel`,
+      line_items: order.products.map((product) => {
+        return {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: product.name,
+            },
+            unit_amount: product.unitPrice * 100,
+          },
+          quantity: product.quantity,
+        };
+      }),
+      discounts: req.body.couponId ? [{ coupon: req.body.couponId }] : [],
+    });
+
+    return res
+      .status(201)
+      .json({ message: "Done", order, session, url: session.url });
+  }
   return res.status(201).json({ message: "Done", order });
 });
 
@@ -195,5 +228,32 @@ export const orderStatus = asyncHandler(async (req, res, next) => {
     return next(new Error("In-valid Order ID", { cause: 400 }));
   }
 
+  return res.status(200).json({ message: "Done" });
+});
+
+export const webhook = asyncHandler(async (req, res, next) => {
+  const sig = req.headers["stripe-signature"];
+
+  const stripe = new Stripe(process.env.STRIPE_KEY);
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.END_POINT_SECRET
+    );
+  } catch (err) {
+    res.status(400).send(`Webhook Error: ${err.message}`);
+    return;
+  } 
+
+  const { orderId } = event.data.object.metadata;
+  if (event.type != "checkout.session.completed") {
+    await orderModel.updateOne({ id: orderId }, { status: "rejected" });
+    return res.status(400).json({ message: "Payment Rejected" });
+  }
+  await orderModel.updateOne({ id: orderId }, { status: "placed" });
   return res.status(200).json({ message: "Done" });
 });
